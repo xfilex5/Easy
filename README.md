@@ -57,7 +57,7 @@ docker run -d -p 7860:7860 --name EasyProxy EasyProxy
 git clone https://github.com/nzo66/EasyProxy.git
 cd EasyProxy
 pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker --pid /tmp/gunicorn.pid app:app
+gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 ```
 
 **Server disponibile su:** `http://localhost:7860`
@@ -71,7 +71,7 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 1. **Projects** → **New → Web Service** → *Public Git Repository*
 2. **Repository**: `https://github.com/nzo66/EasyProxy`
 3. **Build Command**: `pip install -r requirements.txt`
-4. **Start Command**: `gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker --pid /tmp/gunicorn.pid app:app`
+4. **Start Command**: `gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app`
 5. **Deploy**
 
 ### 🤖 HuggingFace Spaces
@@ -122,7 +122,7 @@ cd EasyProxy
 pip install -r requirements.txt
 
 # Avvio 
-gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker --pid /tmp/gunicorn.pid app:app
+gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 ```
 
 ### 🐧 Termux (Android)
@@ -133,7 +133,7 @@ pkg install python git -y
 git clone https://github.com/nzo66/EasyProxy.git
 cd EasyProxy
 pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker --pid /tmp/gunicorn.pid app:app
+gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 ```
 
 ### 🐳 Docker Avanzato

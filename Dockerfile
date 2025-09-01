@@ -19,10 +19,10 @@ COPY . .
 LABEL org.opencontainers.image.title="HLS Proxy Server"
 LABEL org.opencontainers.image.description="Server proxy universale per stream HLS con supporto Vavoo, DLHD e playlist builder"
 LABEL org.opencontainers.image.version="2.5.0"
-LABEL org.opencontainers.image.source="https://github.com/nzo66/tvproxy"
+LABEL org.opencontainers.image.source="https://github.com/nzo66/EasyProxy"
 
 # Esponi la porta su cui l'applicazione è in ascolto.
 EXPOSE 7860
 
 # Comando per avviare l'app in produzione con Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "--worker-class", "aiohttp.worker.GunicornWebWorker", "--pid /tmp/gunicorn.pid", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "--worker-class", "aiohttp.worker.GunicornWebWorker", "app:app"]
