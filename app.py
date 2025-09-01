@@ -3,6 +3,7 @@ import logging
 import re
 import sys
 import os
+import signal
 import urllib.parse
 from urllib.parse import urlparse, urljoin
 import xml.etree.ElementTree as ET
@@ -191,10 +192,35 @@ class HLSProxy:
                 restarting = True
                 extractor_name = "VavooExtractor"
 
+            # ✅ NUOVO: Logica di riavvio graduale per Gunicorn
             if restarting:
-                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Riavvio per forzare l'aggiornamento...")
-                await asyncio.sleep(1)  # Attesa per il flush dei log
-                os._exit(1)  # Uscita forzata per innescare il riavvio dal process manager (Docker, Gunicorn)
+                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Tento un riavvio graduale di tutti i worker...")
+
+                # Cerca il file PID di Gunicorn. Il percorso può essere impostato tramite variabile d'ambiente.
+                pidfile_path = os.environ.get('GUNICORN_PIDFILE', '/tmp/gunicorn.pid')
+                master_pid = None
+                try:
+                    if os.path.exists(pidfile_path):
+                        with open(pidfile_path, 'r') as f:
+                            master_pid = int(f.read().strip())
+                except (IOError, ValueError) as pid_err:
+                    logger.warning(f"⚠️ Impossibile leggere il PID di Gunicorn da {pidfile_path}: {pid_err}")
+
+                if master_pid:
+                    try:
+                        # Invia il segnale SIGHUP al processo master per un riavvio graduale (zero-downtime)
+                        os.kill(master_pid, signal.SIGHUP)
+                        logger.info(f"✅ Segnale SIGHUP inviato al processo master di Gunicorn (PID: {master_pid}). I worker verranno riavviati gradualmente.")
+                        # Il master si occuperà di terminare questo worker. Aggiungiamo un'uscita di sicurezza.
+                        await asyncio.sleep(10)
+                        os._exit(1)
+                    except Exception as kill_err:
+                        logger.error(f"❌ Errore nell'invio del segnale SIGHUP: {kill_err}. Eseguo fallback a uscita forzata del singolo worker.")
+                        os._exit(1)
+                else:
+                    logger.warning(f"⚠️ File PID di Gunicorn non trovato. Eseguo fallback a uscita forzata del singolo worker (vecchio comportamento).")
+                    await asyncio.sleep(1)
+                    os._exit(1)
 
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)

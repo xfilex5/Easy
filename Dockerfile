@@ -25,4 +25,4 @@ LABEL org.opencontainers.image.source="https://github.com/nzo66/tvproxy"
 EXPOSE 7860
 
 # Comando per avviare l'app in produzione con Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "--worker-class", "aiohttp.worker.GunicornWebWorker", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "--worker-class", "aiohttp.worker.GunicornWebWorker", "--pid /tmp/gunicorn.pid", "app:app"]
