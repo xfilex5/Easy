@@ -19,8 +19,11 @@ FILES_TO_UPDATE = [
     "dlhd_extractor.py",
     "vixsrc_extractor.py",
     "playlist_builder.py",
-    "requirements.txt", # Aggiorniamo anche le dipendenze
+    "requirements.txt",
     "README.md",
+    "docker-compose.yml",
+    "Dockerfile",
+    "updater.py",
     os.path.join("templates", "index.html"),
     os.path.join("templates", "info.html"),
     os.path.join("templates", "builder.html"),
