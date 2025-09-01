@@ -152,6 +152,7 @@ class HLSProxy:
 
     async def handle_proxy_request(self, request):
         """Gestisce le richieste proxy principali"""
+        extractor = None
         try:
             target_url = request.query.get('url')
             if not target_url:
@@ -179,6 +180,22 @@ class HLSProxy:
             return await self._proxy_stream(request, stream_url, stream_headers)
             
         except Exception as e:
+            # ✅ AGGIORNATO: Se un estrattore specifico (DLHD, Vavoo) fallisce, riavvia il server per forzare un aggiornamento.
+            # Questo è utile se il sito ha cambiato qualcosa e l'estrattore è obsoleto.
+            restarting = False
+            extractor_name = "sconosciuto"
+            if DLHDExtractor and isinstance(extractor, DLHDExtractor):
+                restarting = True
+                extractor_name = "DLHDExtractor"
+            elif VavooExtractor and isinstance(extractor, VavooExtractor):
+                restarting = True
+                extractor_name = "VavooExtractor"
+
+            if restarting:
+                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Riavvio per forzare l'aggiornamento...")
+                await asyncio.sleep(1)  # Attesa per il flush dei log
+                os._exit(1)  # Uscita forzata per innescare il riavvio dal process manager (Docker, Gunicorn)
+
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
 
