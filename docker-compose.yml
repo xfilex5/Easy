@@ -1,0 +1,8 @@
+services:  
+  tvproxy:
+    build: https://github.com/nzo66/tvproxy.git#main
+    container_name: tvproxy
+    restart: unless-stopped
+    ports:
+      - '7860:7860'
+
