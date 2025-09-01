@@ -1,4 +1,4 @@
-# 🚀 easyproxy - Server Proxy Universale per Streaming HLS
+# 🚀 EasyProxy - Server Proxy Universale per Streaming HLS
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
@@ -45,17 +45,17 @@
 **Assicurati di avere un file `Dockerfile` e `requirements.txt` nella root del progetto.**
 
 ```bash
-git clone https://github.com/nzo66/easyproxy.git
-cd easyproxy
-docker build -t easyproxy .
-docker run -d -p 7860:7860 --name easyproxy easyproxy
+git clone https://github.com/nzo66/EasyProxy.git
+cd EasyProxy
+docker build -t EasyProxy .
+docker run -d -p 7860:7860 --name EasyProxy EasyProxy
 ```
 
 ### 🐍 Python Diretto
 
 ```bash
-git clone https://github.com/nzo66/easyproxy.git
-cd easyproxy
+git clone https://github.com/nzo66/EasyProxy.git
+cd EasyProxy
 pip install -r requirements.txt
 gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 ```
@@ -69,7 +69,7 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 ### ▶️ Render
 
 1. **Projects** → **New → Web Service** → *Public Git Repository*
-2. **Repository**: `https://github.com/nzo66/easyproxy`
+2. **Repository**: `https://github.com/nzo66/EasyProxy`
 3. **Build Command**: `pip install -r requirements.txt`
 4. **Start Command**: `gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app`
 5. **Deploy**
@@ -88,7 +88,7 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 railway login && railway init && railway up
 
 # Heroku
-heroku create easyproxy && git push heroku main
+heroku create EasyProxy && git push heroku main
 ```
 
 ### 🎯 Configurazione Cloud Ottimale
@@ -115,8 +115,8 @@ Ottimizzato per:
 
 ```bash
 # Clone repository
-git clone https://github.com/nzo66/easyproxy.git
-cd easyproxy
+git clone https://github.com/nzo66/EasyProxy.git
+cd EasyProxy
 
 # Installa dipendenze
 pip install -r requirements.txt
@@ -130,8 +130,8 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 ```bash
 pkg update && pkg upgrade
 pkg install python git -y
-git clone https://github.com/nzo66/easyproxy.git
-cd easyproxy
+git clone https://github.com/nzo66/EasyProxy.git
+cd EasyProxy
 pip install -r requirements.txt
 gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 ```
@@ -140,16 +140,16 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 
 ```bash
 # Build personalizzata
-docker build -t easyproxy .
+docker build -t EasyProxy .
 
 # Run con configurazioni personalizzate
 docker run -d -p 7860:7860 \
-  --name easyproxy easyproxy
+  --name EasyProxy EasyProxy
 
 # Run con volume per logs
 docker run -d -p 7860:7860 \
   -v $(pwd)/logs:/app/logs \
-  --name easyproxy easyproxy
+  --name EasyProxy EasyProxy
 ```
 
 ---
@@ -298,17 +298,17 @@ http://tuo-server:7860/proxy/manifest.m3u8?url=https://stream.example.com/live.m
 
 ```bash
 # Logs in tempo reale
-docker logs -f easyproxy
+docker logs -f EasyProxy
 
 # Riavvio container
-docker restart easyproxy
+docker restart EasyProxy
 
 # Stop/Start
-docker stop easyproxy
-docker start easyproxy
+docker stop EasyProxy
+docker start EasyProxy
 
 # Rimozione completa
-docker rm -f easyproxy
+docker rm -f EasyProxy
 ```
 
 ---
