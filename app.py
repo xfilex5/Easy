@@ -12,6 +12,20 @@ from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
 
 # Configurazione logging
 logging.basicConfig(level=logging.INFO)
+
+# --- AUTO-UPDATER DA GITHUB ---
+# Esegue il controllo degli aggiornamenti prima di caricare qualsiasi altro modulo locale.
+try:
+    # Aggiunge il percorso corrente a sys.path per permettere l'importazione di 'updater'
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from updater import check_for_updates
+    check_for_updates()
+except ImportError:
+    logging.warning("⚠️ Modulo 'updater.py' non trovato o dipendenza 'requests' mancante. L'aggiornamento automatico è disabilitato.")
+except Exception as e:
+    logging.error(f"❌ Si è verificato un errore imprevisto durante l'auto-update: {e}")
+# --- FINE AUTO-UPDATER ---
+
 logger = logging.getLogger(__name__)
 
 # Aggiungi path corrente per import moduli
