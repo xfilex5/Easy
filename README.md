@@ -164,12 +164,6 @@ Sostituisci `<server-ip>` con l'IP del tuo server.
 http://<server-ip>:7860/
 ```
 
-**Dashboard con:**
-- ✅ Stato servizi e statistiche
-- ✅ Test connettività
-- ✅ Log richieste in tempo reale
-- ✅ Monitoraggio performance
-
 ### 📺 Proxy HLS Universale
 
 ```
