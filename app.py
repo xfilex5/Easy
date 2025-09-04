@@ -499,7 +499,7 @@ class HLSProxy:
                     rewritten_lines.append(proxy_url)
                 # I segmenti .ts (e altri tipi di file) vengono gestiti come stream diretti.
                 # Vengono proxati tramite lo stesso endpoint, ma il gestore li tratterà come file binari.
-                elif '.ts' in line or not any(ext in line for ext in ['.m3u8', '.mpd']):
+                elif '.ts' in line:
                     absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
                     encoded_url = urllib.parse.quote(absolute_url, safe='')
                     # Usiamo lo stesso endpoint, la logica in `_proxy_stream` distinguerà il content-type.
