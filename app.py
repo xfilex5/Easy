@@ -488,6 +488,28 @@ class HLSProxy:
                 else:
                     rewritten_lines.append(line)
             
+            # ✅ NUOVO: Gestione per i sottotitoli e altri media nel tag #EXT-X-MEDIA
+            elif line.startswith('#EXT-X-MEDIA:') and 'URI=' in line:
+                uri_start = line.find('URI="') + 5
+                uri_end = line.find('"', uri_start)
+                
+                if uri_start > 4 and uri_end > uri_start:
+                    original_media_url = line[uri_start:uri_end]
+                    
+                    # Costruisci l'URL assoluto e poi il proxy URL
+                    absolute_media_url = urljoin(base_url, original_media_url)
+                    encoded_media_url = urllib.parse.quote(absolute_media_url, safe='')
+                    
+                    # I sottotitoli sono manifest, quindi usano l'endpoint del proxy principale
+                    proxy_media_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_media_url}{header_params}"
+                    
+                    # Sostituisci l'URI nel tag
+                    new_line = line[:uri_start] + proxy_media_url + line[uri_end:]
+                    rewritten_lines.append(new_line)
+                    logger.info(f"🔄 Redirected Media URL: {absolute_media_url} -> {proxy_media_url}")
+                else:
+                    rewritten_lines.append(line)
+
             # Gestione segmenti video (.ts) e sub-manifest (.m3u8), sia relativi che assoluti
             elif line and not line.startswith('#') and ('http' in line or not any(c in line for c in ' =?')):
                 # ✅ CORREZIONE FINALE: Distingue tra manifest e segmenti.
