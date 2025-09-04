@@ -87,8 +87,9 @@ class GenericHLSExtractor:
         return self.session
 
     async def extract(self, url):
-        if not any(ext in url.lower() for ext in ['.m3u8', '.mpd']):
-            raise ExtractorError("URL non supportato (richiesto .m3u8 o .mpd)")
+        # ✅ CORREZIONE: Permette anche gli URL di playlist VixSrc che non hanno estensione.
+        if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', 'vixsrc.to/playlist']):
+            raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd o URL VixSrc valido)")
 
         parsed_url = urlparse(url)
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
