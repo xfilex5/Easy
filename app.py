@@ -135,12 +135,12 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = DLHDExtractor(request_headers)
                 return self.extractors[key]
-            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd']):
+            # ✅ MODIFICATO: Aggiunto 'vixsrc.to/playlist' per gestire i sub-manifest come HLS generici.
+            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd']) or 'vixsrc.to/playlist' in url.lower():
                 key = "hls_generic"
                 if key not in self.extractors:
                     self.extractors[key] = GenericHLSExtractor(request_headers)
                 return self.extractors[key]
-            # ✅ MODIFICATO: Attiva VixSrcExtractor solo per gli URL di pagina, non per i manifest.
             elif 'vixsrc.to/' in url.lower() and any(x in url for x in ['/movie/', '/tv/', '/iframe/']):
                 key = "vixsrc"
                 if key not in self.extractors:
