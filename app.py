@@ -461,15 +461,11 @@ class HLSProxy:
                 if uri_start > 4 and uri_end > uri_start:
                     original_key_url = line[uri_start:uri_end]
                     
-                    # Se non è già un URL completo, costruiscilo dalla base URL
-                    if not original_key_url.startswith('http'):
-                        if base_url.endswith('/'):
-                            original_key_url = base_url + original_key_url
-                        else:
-                            original_key_url = base_url.rsplit('/', 1)[0] + '/' + original_key_url
+                    # ✅ CORREZIONE: Usa urljoin per costruire l'URL assoluto della chiave in modo sicuro.
+                    absolute_key_url = urljoin(base_url, original_key_url)
                     
                     # Crea URL proxy per la chiave
-                    encoded_key_url = urllib.parse.quote(original_key_url, safe='')
+                    encoded_key_url = urllib.parse.quote(absolute_key_url, safe='')
                     proxy_key_url = f"{proxy_base}/key?key_url={encoded_key_url}"
 
                     # Aggiungi gli header necessari come parametri h_
@@ -487,7 +483,7 @@ class HLSProxy:
                     # Sostituisci l'URI nel tag EXT-X-KEY
                     new_line = line[:uri_start] + proxy_key_url + line[uri_end:]
                     rewritten_lines.append(new_line)
-                    logger.info(f"🔄 Redirected AES key: {original_key_url} -> {proxy_key_url}")
+                    logger.info(f"🔄 Redirected AES key: {absolute_key_url} -> {proxy_key_url}")
                 else:
                     rewritten_lines.append(line)
             
