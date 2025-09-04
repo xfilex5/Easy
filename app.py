@@ -445,6 +445,9 @@ class HLSProxy:
         lines = manifest_content.split('\n')
         rewritten_lines = []
         
+        # Prepara gli header da passare come parametri URL
+        header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+
         for line in lines:
             line = line.strip()
             
@@ -487,14 +490,25 @@ class HLSProxy:
                 else:
                     rewritten_lines.append(line)
             
-            # Gestione segmenti video (.ts) e sub-manifest (.m3u8)
-            elif line.endswith('.ts') or (line.endswith('.m3u8') and not line.startswith('http')):
-                if not line.startswith('http'):
+            # Gestione segmenti video (.ts) e sub-manifest (.m3u8), sia relativi che assoluti
+            elif line and not line.startswith('#'):
+                # Controlla se è un URL di stream (m3u8, ts, o senza estensione specifica come vixsrc)
+                if '.m3u8' in line or '.ts' in line or 'vixsrc.to/playlist' in line:
+                    # Se l'URL non è assoluto, rendilo assoluto
+                    if not line.startswith('http'):
+                        segment_url = urljoin(base_url, line)
+                    else:
+                        segment_url = line
+
+                    encoded_url = urllib.parse.quote(segment_url, safe='')
+                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                    rewritten_lines.append(proxy_url)
+                elif not line.startswith('http'): # Gestione segmenti relativi senza estensione esplicita
                     encoded_base = urllib.parse.quote(base_url, safe='')
                     proxy_url = f"{proxy_base}/segment/{line}?base_url={encoded_base}"
                     rewritten_lines.append(proxy_url)
                 else:
-                    rewritten_lines.append(line)
+                    rewritten_lines.append(line) # Lascia invariati altri URL assoluti
             else:
                 rewritten_lines.append(line)
         
