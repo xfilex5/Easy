@@ -140,7 +140,8 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = GenericHLSExtractor(request_headers)
                 return self.extractors[key]
-            elif 'vixsrc' in url.lower():
+            # ✅ MODIFICATO: Attiva VixSrcExtractor solo per gli URL di pagina, non per i manifest.
+            elif 'vixsrc.to/' in url.lower() and any(x in url for x in ['/movie/', '/tv/', '/iframe/']):
                 key = "vixsrc"
                 if key not in self.extractors:
                     self.extractors[key] = VixSrcExtractor(request_headers)

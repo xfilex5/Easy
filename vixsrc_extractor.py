@@ -179,6 +179,16 @@ class VixSrcExtractor:
             version = None
             response = None
             
+            # ✅ NUOVO: Gestione per URL di playlist che non richiedono estrazione.
+            # Se l'URL è già un manifest, lo restituisce direttamente.
+            if "vixsrc.to/playlist" in url:
+                logger.info("URL è già un manifest VixSrc, non richiede estrazione.")
+                return {
+                    "destination_url": url,
+                    "request_headers": self.base_headers,
+                    "mediaflow_endpoint": self.mediaflow_endpoint,
+                }
+
             if "iframe" in url:
                 # Gestione URL iframe
                 site_url = url.split("/iframe")[0]
