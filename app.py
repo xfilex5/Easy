@@ -490,20 +490,20 @@ class HLSProxy:
             
             # Gestione segmenti video (.ts) e sub-manifest (.m3u8), sia relativi che assoluti
             elif line and not line.startswith('#') and ('http' in line or not any(c in line for c in ' =?')):
-                # Controlla se è un URL di stream (m3u8, ts, o senza estensione specifica come vixsrc), escludendo linee di parametri
-                if '.m3u8' in line or '.ts' in line or 'vixsrc.to/playlist' in line:
-                    # Se l'URL non è assoluto, rendilo assoluto
-                    if not line.startswith('http'):
-                        segment_url = urljoin(base_url, line)
-                    else:
-                        segment_url = line
-
-                    encoded_url = urllib.parse.quote(segment_url, safe='')
+                # ✅ CORREZIONE: Distingue tra manifest e segmenti.
+                # I manifest (.m3u8) e le playlist vixsrc vanno all'endpoint proxy principale.
+                if '.m3u8' in line or 'vixsrc.to/playlist' in line:
+                    absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
+                    encoded_url = urllib.parse.quote(absolute_url, safe='')
                     proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
-                elif not line.startswith('http'): # Gestione segmenti relativi senza estensione esplicita
-                    encoded_base = urllib.parse.quote(base_url, safe='')
-                    proxy_url = f"{proxy_base}/segment/{line}?base_url={encoded_base}"
+                # I segmenti .ts (e altri tipi di file) vengono gestiti come stream diretti.
+                # Vengono proxati tramite lo stesso endpoint, ma il gestore li tratterà come file binari.
+                elif '.ts' in line or not any(ext in line for ext in ['.m3u8', '.mpd']):
+                    absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
+                    encoded_url = urllib.parse.quote(absolute_url, safe='')
+                    # Usiamo lo stesso endpoint, la logica in `_proxy_stream` distinguerà il content-type.
+                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
                 else:
                     rewritten_lines.append(line) # Lascia invariati altri URL assoluti
