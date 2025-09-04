@@ -489,8 +489,8 @@ class HLSProxy:
                     rewritten_lines.append(line)
             
             # Gestione segmenti video (.ts) e sub-manifest (.m3u8), sia relativi che assoluti
-            elif line and not line.startswith('#'):
-                # Controlla se è un URL di stream (m3u8, ts, o senza estensione specifica come vixsrc)
+            elif line and not line.startswith('#') and ('http' in line or not any(c in line for c in ' =?')):
+                # Controlla se è un URL di stream (m3u8, ts, o senza estensione specifica come vixsrc), escludendo linee di parametri
                 if '.m3u8' in line or '.ts' in line or 'vixsrc.to/playlist' in line:
                     # Se l'URL non è assoluto, rendilo assoluto
                     if not line.startswith('http'):
