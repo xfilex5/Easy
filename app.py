@@ -88,8 +88,8 @@ class GenericHLSExtractor:
 
     async def extract(self, url):
         # ✅ CORREZIONE: Permette anche gli URL di playlist VixSrc che non hanno estensione.
-        if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', 'vixsrc.to/playlist']):
-            raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd o URL VixSrc valido)")
+        if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', '.ts', 'vixsrc.to/playlist']):
+            raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd, .ts o URL VixSrc valido)")
 
         parsed_url = urlparse(url)
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -137,7 +137,7 @@ class HLSProxy:
                     self.extractors[key] = DLHDExtractor(request_headers)
                 return self.extractors[key]
             # ✅ MODIFICATO: Aggiunto 'vixsrc.to/playlist' per gestire i sub-manifest come HLS generici.
-            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd']) or 'vixsrc.to/playlist' in url.lower():
+            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd', '.ts']) or 'vixsrc.to/playlist' in url.lower():
                 key = "hls_generic"
                 if key not in self.extractors:
                     self.extractors[key] = GenericHLSExtractor(request_headers)
@@ -489,22 +489,21 @@ class HLSProxy:
                     rewritten_lines.append(line)
             
             # Gestione segmenti video (.ts) e sub-manifest (.m3u8), sia relativi che assoluti
-            elif line and not line.startswith('#') and ('http' in line or not any(c in line for c in ' =?')):
-                # Controlla se è un URL di stream (m3u8, ts, o senza estensione specifica come vixsrc), escludendo linee di parametri
-                if '.m3u8' in line or '.ts' in line or 'vixsrc.to/playlist' in line:
-                    # Se l'URL non è assoluto, rendilo assoluto
-                    if not line.startswith('http'):
-                        segment_url = urljoin(base_url, line)
-                    else:
-                        segment_url = line
-
-                    encoded_url = urllib.parse.quote(segment_url, safe='')
+            elif line and not line.startswith('#'):
+                # ✅ CORREZIONE: Distingue tra manifest (.m3u8) e segmenti (.ts)
+                # I manifest e le playlist vixsrc vanno all'endpoint proxy principale.
+                if '.m3u8' in line or 'vixsrc.to/playlist' in line:
+                    absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
+                    encoded_url = urllib.parse.quote(absolute_url, safe='')
                     proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
-                elif not line.startswith('http'): # Gestione segmenti relativi senza estensione esplicita
-                    encoded_base = urllib.parse.quote(base_url, safe='')
-                    proxy_url = f"{proxy_base}/segment/{line}?base_url={encoded_base}"
+                # I segmenti .ts (e altri) vanno all'endpoint proxy principale, che può gestirli.
+                elif '.ts' in line or not any(ext in line for ext in ['.m3u8', '.mpd']):
+                    absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
+                    encoded_url = urllib.parse.quote(absolute_url, safe='')
+                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
+
                 else:
                     rewritten_lines.append(line) # Lascia invariati altri URL assoluti
             else:
