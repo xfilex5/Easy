@@ -9,21 +9,8 @@ from urllib.parse import urlparse, urljoin
 import xml.etree.ElementTree as ET
 import aiohttp
 from aiohttp import web
-from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from aiohttp_proxy import ProxyConnector
-
-# --- AUTO-UPDATER DA GITHUB ---
-# Esegue il controllo degli aggiornamenti prima di caricare qualsiasi altro modulo locale.
-try:
-    # Aggiunge il percorso corrente a sys.path per permettere l'importazione di 'updater'
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from updater import check_for_updates
-    check_for_updates()
-except ImportError:
-    logging.warning("⚠️ Modulo 'updater.py' non trovato o dipendenza 'requests' mancante. L'aggiornamento automatico è disabilitato.")
-except Exception as e:
-    logging.error(f"❌ Si è verificato un errore imprevisto durante l'auto-update: {e}")
-# --- FINE AUTO-UPDATER ---
 
 # --- Configurazione Proxy ---
 def parse_proxies(proxy_env_var: str) -> list:

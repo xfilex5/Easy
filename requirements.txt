@@ -2,4 +2,3 @@ aiohttp
 gunicorn
 requests
 python-dotenv
-aiohttp-proxy
