@@ -85,7 +85,7 @@ class DLHDExtractor:
                 
                 logger.info(f"Tentativo {attempt + 1}/{retries} per URL: {url}")
                 
-                async with session.get(url, headers=final_headers) as response:
+                async with session.get(url, headers=final_headers, ssl=False) as response:
                     response.raise_for_status()
                     content = await response.text()
                     
@@ -151,11 +151,8 @@ class DLHDExtractor:
             if self._cached_base_url:
                 return self._cached_base_url
             try:
-                resp = await self._make_robust_request("https://daddylive.sx/")
+                await self._make_robust_request("https://daddylive.sx/")
                 base_url = "https://daddylive.sx/"
-                if hasattr(resp, 'url') and resp.url:
-                    parsed = urlparse(str(resp.url))
-                    base_url = f"{parsed.scheme}://{parsed.netloc}/"
                 self._cached_base_url = base_url
                 return base_url
             except Exception as e:
@@ -166,6 +163,7 @@ class DLHDExtractor:
             patterns = [
                 r'/premium(\d+)/mono\.m3u8$',
                 r'/(?:watch|stream|cast|player)/stream-(\d+)\.php',
+                r'watch\.php\?id=(\d+)',
                 r'(?:%2F|/)stream-(\d+)\.php',
                 r'stream-(\d+)\.php'
             ]
@@ -188,33 +186,60 @@ class DLHDExtractor:
             # Fase 1: Ottieni pagina principale
             resp1 = await self._make_robust_request(stream_url, headers=daddylive_headers)
             content1 = await resp1.text()
-            
-            iframes = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>\s*<button[^>]*>\s*Player\s*2\s*</button>', content1)
-            if not iframes:
-                raise ExtractorError("No Player 2 link found")
-            
-            url2 = iframes[0]
-            if not url2.startswith('http'):
-                url2 = baseurl + url2.lstrip('/')
-            url2 = url2.replace('//cast', '/cast')
-            
-            daddylive_headers['Referer'] = url2
-            daddylive_headers['Origin'] = urlparse(url2).scheme + "://" + urlparse(url2).netloc
-            
-            # Fase 2: Ottieni pagina Player 2
-            resp2 = await self._make_robust_request(url2, headers=daddylive_headers)
-            content2 = await resp2.text()
-            
-            iframes2 = re.findall(r'iframe src="([^"]*)', content2)
-            if not iframes2:
-                raise ExtractorError("No iframe found in Player 2 page")
-            
-            iframe_url = iframes2[0]
+
+            # Prova il nuovo formato: pulsanti con data-url per i player
+            player_links = re.findall(r'<button[^>]*data-url="([^"]+)"[^>]*>Player\s*\d+</button>', content1)
+            last_player_error = None
+            iframe_url = None
+            player_url = None
+
+            if player_links:
+                for link in player_links:
+                    try:
+                        if not link.startswith('http'):
+                            link = baseurl + link.lstrip('/')
+                        daddylive_headers['Referer'] = link
+                        daddylive_headers['Origin'] = urlparse(link).scheme + "://" + urlparse(link).netloc
+                        resp2 = await self._make_robust_request(link, headers=daddylive_headers)
+                        content2 = await resp2.text()
+                        iframes2 = re.findall(r'iframe src="([^"]*)', content2)
+                        if iframes2:
+                            iframe_url = iframes2[0]
+                            player_url = link
+                            break
+                    except Exception as e:
+                        last_player_error = e
+                        continue
+
+            if iframe_url is None:
+                # Fallback al vecchio formato: anchor con bottone Player 2
+                anchors = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>\s*<button[^>]*>\s*Player\s*2\s*</button>', content1)
+                if not anchors:
+                    if last_player_error:
+                        raise ExtractorError(f"No player links found. Last error: {last_player_error}")
+                    raise ExtractorError("No player links found")
+                link = anchors[0]
+                if not link.startswith('http'):
+                    link = baseurl + link.lstrip('/')
+                link = link.replace('//cast', '/cast')
+                daddylive_headers['Referer'] = link
+                daddylive_headers['Origin'] = urlparse(link).scheme + "://" + urlparse(link).netloc
+                resp2 = await self._make_robust_request(link, headers=daddylive_headers)
+                content2 = await resp2.text()
+                iframes2 = re.findall(r'iframe src="([^"]*)', content2)
+                if not iframes2:
+                    if last_player_error:
+                        raise ExtractorError(f"No iframe found in any player page: {last_player_error}")
+                    raise ExtractorError("No iframe found in player page")
+                iframe_url = iframes2[0]
+                player_url = link
+
+            # Normalizza URL iframe
             if not iframe_url.startswith('http'):
-                iframe_url = urlparse(url2).scheme + "://" + urlparse(url2).netloc + "/" + iframe_url.lstrip('/')
-                
+                iframe_url = urlparse(player_url).scheme + "://" + urlparse(player_url).netloc + "/" + iframe_url.lstrip('/')
+
             self._iframe_context = iframe_url
-            
+
             # Fase 3: Ottieni contenuto iframe
             resp3 = await self._make_robust_request(iframe_url, headers=daddylive_headers)
             iframe_content = await resp3.text()
@@ -239,7 +264,7 @@ class DLHDExtractor:
             def extract_xjz_format(js):
                 """Estrae parametri dal formato XJZ"""
                 try:
-                    xjz_pattern = r'const\s+XJZ\s*=\s*["\']([^"\']+)["\']'
+                    xjz_pattern = r'(?:const|var|let)\s+XJZ\s*=\s*["\']([^"\']+)["\']'
                     match = re.search(xjz_pattern, js)
                     if not match:
                         return None
@@ -273,7 +298,6 @@ class DLHDExtractor:
                             bundle_data = match.group(1)
                             break
                     
-                    # ✅ CORREZIONE: Usa bundle_data invece di bundle_
                     if not bundle_data:
                         return None
                     
@@ -321,7 +345,6 @@ class DLHDExtractor:
                 else:
                     # Prova formato BUNDLE
                     bundle_data = extract_bundle_format(iframe_content)
-                    # ✅ CORREZIONE: Usa bundle_data invece di bundle_
                     if bundle_data:
                         logger.info("Uso del formato BUNDLE per l'estrazione dei parametri")
                         auth_host = bundle_data.get('b_host')
@@ -373,8 +396,12 @@ class DLHDExtractor:
                 
                 auth_url = f'{auth_url}?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}'
                 
-                # Fase 4: Auth request
-                auth_resp = await self._make_robust_request(auth_url, headers=daddylive_headers)
+                # Fase 4: Auth request con header del contesto iframe
+                iframe_origin = f"https://{urlparse(iframe_url).netloc}"
+                auth_headers = daddylive_headers.copy()
+                auth_headers['Referer'] = iframe_url
+                auth_headers['Origin'] = iframe_origin
+                await self._make_robust_request(auth_url, headers=auth_headers)
                 
                 # Fase 5: Server lookup
                 server_lookup_url = f"https://{urlparse(iframe_url).netloc}/server_lookup.php?channel_id={channel_key}"
