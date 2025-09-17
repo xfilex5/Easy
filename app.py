@@ -9,7 +9,8 @@ from urllib.parse import urlparse, urljoin
 import xml.etree.ElementTree as ET
 import aiohttp
 from aiohttp import web
-from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ProxyConnector
+from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
+from aiohttp_proxy import ProxyConnector
 
 # --- AUTO-UPDATER DA GITHUB ---
 # Esegue il controllo degli aggiornamenti prima di caricare qualsiasi altro modulo locale.

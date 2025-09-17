@@ -6,7 +6,8 @@ import json
 import random
 from urllib.parse import urlparse, quote_plus
 import aiohttp
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, ProxyConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp_proxy import ProxyConnector
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)

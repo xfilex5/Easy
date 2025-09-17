@@ -2,7 +2,8 @@ import asyncio
 import logging
 import time
 import aiohttp
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, ProxyConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp_proxy import ProxyConnector
 from typing import Optional, Dict, Any
 import random
 

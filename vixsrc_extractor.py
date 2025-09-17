@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 from typing import Dict, Any
 import random
 import aiohttp
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, ProxyConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp_proxy import ProxyConnector
 
 logger = logging.getLogger(__name__)
 
