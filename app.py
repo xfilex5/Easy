@@ -2,29 +2,33 @@ import asyncio
 import logging
 import re
 import sys
+import random
 import os
 import urllib.parse
 from urllib.parse import urlparse, urljoin
 import xml.etree.ElementTree as ET
 import aiohttp
 from aiohttp import web
-from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
+from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ProxyConnector
+
+# --- Configurazione Proxy ---
+def parse_proxies(proxy_env_var: str) -> list:
+    """Analizza una stringa di proxy separati da virgola da una variabile d'ambiente."""
+    proxies_str = os.environ.get(proxy_env_var, "").strip()
+    if proxies_str:
+        return [p.strip() for p in proxies_str.split(',') if p.strip()]
+    return []
+
+GLOBAL_PROXIES = parse_proxies('GLOBAL_PROXY')
+VAVOO_PROXIES = parse_proxies('VAVOO_PROXY')
+DLHD_PROXIES = parse_proxies('DLHD_PROXY')
+
+if GLOBAL_PROXIES: logging.info(f"🌍 Caricati {len(GLOBAL_PROXIES)} proxy globali.")
+if VAVOO_PROXIES: logging.info(f"🎬 Caricati {len(VAVOO_PROXIES)} proxy Vavoo.")
+if DLHD_PROXIES: logging.info(f"📺 Caricati {len(DLHD_PROXIES)} proxy DLHD.")
 
 # Configurazione logging
 logging.basicConfig(level=logging.INFO)
-
-# --- AUTO-UPDATER DA GITHUB ---
-# Esegue il controllo degli aggiornamenti prima di caricare qualsiasi altro modulo locale.
-try:
-    # Aggiunge il percorso corrente a sys.path per permettere l'importazione di 'updater'
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from updater import check_for_updates
-    check_for_updates()
-except ImportError:
-    logging.warning("⚠️ Modulo 'updater.py' non trovato o dipendenza 'requests' mancante. L'aggiornamento automatico è disabilitato.")
-except Exception as e:
-    logging.error(f"❌ Si è verificato un errore imprevisto durante l'auto-update: {e}")
-# --- FINE AUTO-UPDATER ---
 
 logger = logging.getLogger(__name__)
 
@@ -65,20 +69,31 @@ class ExtractorError(Exception):
     pass
 
 class GenericHLSExtractor:
-    def __init__(self, request_headers):
+    def __init__(self, request_headers, proxies=None):
         self.request_headers = request_headers
         self.base_headers = {
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
         self.session = None
+        self.proxies = proxies or []
+
+    def _get_random_proxy(self):
+        """Restituisce un proxy casuale dalla lista."""
+        return random.choice(self.proxies) if self.proxies else None
 
     async def _get_session(self):
         if self.session is None or self.session.closed:
-            connector = TCPConnector(
-                limit=20, limit_per_host=10, 
-                keepalive_timeout=60, enable_cleanup_closed=True, 
-                force_close=False, use_dns_cache=True
-            )
+            proxy = self._get_random_proxy()
+            if proxy:
+                logging.info(f"Utilizzo del proxy {proxy} per la sessione generica.")
+                connector = ProxyConnector.from_url(proxy)
+            else:
+                connector = TCPConnector(
+                    limit=20, limit_per_host=10, 
+                    keepalive_timeout=60, enable_cleanup_closed=True, 
+                    force_close=False, use_dns_cache=True
+                )
+
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
             self.session = ClientSession(
                 timeout=timeout, connector=connector, 
@@ -128,24 +143,26 @@ class HLSProxy:
         try:
             if "vavoo.to" in url:
                 key = "vavoo"
+                proxies = VAVOO_PROXIES or GLOBAL_PROXIES
                 if key not in self.extractors:
-                    self.extractors[key] = VavooExtractor(request_headers)
+                    self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
             elif any(domain in url for domain in ["daddylive", "dlhd"]) or re.search(r'stream-\d+\.php', url):
                 key = "dlhd"
+                proxies = DLHD_PROXIES or GLOBAL_PROXIES
                 if key not in self.extractors:
-                    self.extractors[key] = DLHDExtractor(request_headers)
+                    self.extractors[key] = DLHDExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
             # ✅ MODIFICATO: Aggiunto 'vixsrc.to/playlist' per gestire i sub-manifest come HLS generici.
             elif any(ext in url.lower() for ext in ['.m3u8', '.mpd', '.ts']) or 'vixsrc.to/playlist' in url.lower():
                 key = "hls_generic"
                 if key not in self.extractors:
-                    self.extractors[key] = GenericHLSExtractor(request_headers)
+                    self.extractors[key] = GenericHLSExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
             elif 'vixsrc.to/' in url.lower() and any(x in url for x in ['/movie/', '/tv/', '/iframe/']):
                 key = "vixsrc"
                 if key not in self.extractors:
-                    self.extractors[key] = VixSrcExtractor(request_headers)
+                    self.extractors[key] = VixSrcExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
             else:
                 raise ExtractorError("Tipo di URL non supportato")
@@ -228,9 +245,15 @@ class HLSProxy:
             logger.info(f"🔑 Fetching AES key from: {key_url}")
             logger.debug(f"   -> with headers: {headers}")
             
+            proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
+            connector_kwargs = {}
+            if proxy:
+                connector_kwargs['proxy'] = proxy
+                logger.info(f"Utilizzo del proxy {proxy} per la richiesta della chiave.")
+
             timeout = ClientTimeout(total=30)
             async with ClientSession(timeout=timeout) as session:
-                async with session.get(key_url, headers=headers) as resp:
+                async with session.get(key_url, headers=headers, **connector_kwargs) as resp:
                     if resp.status == 200:
                         key_data = await resp.read()
                         logger.info(f"✅ AES key fetched successfully: {len(key_data)} bytes")
@@ -288,9 +311,15 @@ class HLSProxy:
                 if header in request.headers:
                     headers[header] = request.headers[header]
             
+            proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
+            connector_kwargs = {}
+            if proxy:
+                connector_kwargs['proxy'] = proxy
+                logger.info(f"Utilizzo del proxy {proxy} per il segmento .ts.")
+
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
-                async with session.get(segment_url, headers=headers) as resp:
+                async with session.get(segment_url, headers=headers, **connector_kwargs) as resp:
                     response_headers = {}
                     
                     for header in ['content-type', 'content-length', 'content-range', 
@@ -332,9 +361,15 @@ class HLSProxy:
                 if header in request.headers:
                     headers[header] = request.headers[header]
             
+            proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
+            connector_kwargs = {}
+            if proxy:
+                connector_kwargs['proxy'] = proxy
+                logger.info(f"Utilizzo del proxy {proxy} per lo stream.")
+
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
-                async with session.get(stream_url, headers=headers) as resp:
+                async with session.get(stream_url, headers=headers, **connector_kwargs) as resp:
                     content_type = resp.headers.get('content-type', '')
                     
                     # Gestione special per manifest HLS
@@ -636,6 +671,7 @@ class HLSProxy:
                 "✅ Proxy HLS streams",
                 "✅ AES-128 key proxying",  # ✅ NUOVO
                 "✅ Playlist building",
+                "✅ Supporto Proxy (SOCKS5, HTTP/S)",
                 "✅ Multi-extractor support",
                 "✅ CORS enabled"
             ],
@@ -645,6 +681,11 @@ class HLSProxy:
                 "vavoo_extractor": VavooExtractor is not None,
                 "dlhd_extractor": DLHDExtractor is not None,
                 "vixsrc_extractor": VixSrcExtractor is not None,
+            },
+            "proxy_config": {
+                "global": f"{len(GLOBAL_PROXIES)} proxies caricati",
+                "vavoo": f"{len(VAVOO_PROXIES)} proxies caricati",
+                "dlhd": f"{len(DLHD_PROXIES)} proxies caricati",
             },
             "endpoints": {
                 "/proxy/manifest.m3u8": "Proxy principale - ?url=<URL>",

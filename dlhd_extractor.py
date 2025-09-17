@@ -3,9 +3,10 @@ import logging
 import re
 import base64
 import json
+import random
 from urllib.parse import urlparse, quote_plus
 import aiohttp
-from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector, ProxyConnector
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class ExtractorError(Exception):
 class DLHDExtractor:
     """DLHD Extractor con sessione persistente e gestione anti-bot avanzata"""
 
-    def __init__(self, request_headers: dict):
+    def __init__(self, request_headers: dict, proxies: list = None):
         self.request_headers = request_headers
         self.base_headers = {
             # ✅ User-Agent più recente per bypassare protezioni anti-bot
@@ -27,19 +28,29 @@ class DLHDExtractor:
         self._cached_base_url = None
         self._iframe_context = None
         self._session_lock = asyncio.Lock()
+        self.proxies = proxies or []
+
+    def _get_random_proxy(self):
+        """Restituisce un proxy casuale dalla lista."""
+        return random.choice(self.proxies) if self.proxies else None
 
     async def _get_session(self):
         """✅ Sessione persistente con cookie jar automatico"""
         if self.session is None or self.session.closed:
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
-            connector = TCPConnector(
-                limit=10,
-                limit_per_host=3,
-                keepalive_timeout=30,
-                enable_cleanup_closed=True,
-                force_close=False,
-                use_dns_cache=True
-            )
+            proxy = self._get_random_proxy()
+            if proxy:
+                logger.info(f"Utilizzo del proxy {proxy} per la sessione DLHD.")
+                connector = ProxyConnector.from_url(proxy, ssl=False)
+            else:
+                connector = TCPConnector(
+                    limit=10,
+                    limit_per_host=3,
+                    keepalive_timeout=30,
+                    enable_cleanup_closed=True,
+                    force_close=False,
+                    use_dns_cache=True
+                )
             # ✅ FONDAMENTALE: Cookie jar per mantenere sessione come browser reale
             self.session = ClientSession(
                 timeout=timeout,
@@ -85,7 +96,7 @@ class DLHDExtractor:
                 
                 logger.info(f"Tentativo {attempt + 1}/{retries} per URL: {url}")
                 
-                async with session.get(url, headers=final_headers, ssl=False) as response:
+                async with session.get(url, headers=final_headers, ssl=False) as response: # ssl=False è gestito dal connector
                     response.raise_for_status()
                     content = await response.text()
                     
