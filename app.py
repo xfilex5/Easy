@@ -186,18 +186,30 @@ class HLSProxy:
             logger.info(f"Richiesta proxy per URL: {target_url}")
             
             extractor = await self.get_extractor(target_url, dict(request.headers))
-            result = await extractor.extract(target_url)
-            stream_url = result["destination_url"]
-            stream_headers = result.get("request_headers", {})
             
-            # Aggiungi headers personalizzati da query params
-            for param_name, param_value in request.query.items():
-                if param_name.startswith('h_'):
-                    header_name = param_name[2:]
-                    stream_headers[header_name] = param_value
-            
-            logger.info(f"Stream URL risolto: {stream_url}")
-            return await self._proxy_stream(request, stream_url, stream_headers)
+            try:
+                # Primo tentativo con la cache (se disponibile)
+                result = await extractor.extract(target_url)
+                stream_url = result["destination_url"]
+                stream_headers = result.get("request_headers", {})
+                
+                # Aggiungi headers personalizzati da query params
+                for param_name, param_value in request.query.items():
+                    if param_name.startswith('h_'):
+                        header_name = param_name[2:]
+                        stream_headers[header_name] = param_value
+                
+                logger.info(f"Stream URL risolto: {stream_url}")
+                return await self._proxy_stream(request, stream_url, stream_headers)
+            except ExtractorError as e:
+                logger.warning(f"Estrazione fallita, tento di nuovo forzando l'aggiornamento della cache: {e}")
+                # Se il primo tentativo fallisce (magari con dati cache non validi),
+                # riprova forzando un refresh.
+                result = await extractor.extract(target_url, force_refresh=True)
+                stream_url = result["destination_url"]
+                stream_headers = result.get("request_headers", {})
+                logger.info(f"Stream URL risolto dopo refresh: {stream_url}")
+                return await self._proxy_stream(request, stream_url, stream_headers)
             
         except Exception as e:
             # ✅ AGGIORNATO: Se un estrattore specifico (DLHD, Vavoo) fallisce, riavvia il server per forzare un aggiornamento.

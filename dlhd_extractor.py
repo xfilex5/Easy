@@ -3,6 +3,7 @@ import logging
 import re
 import base64
 import json
+import os
 import random
 from urllib.parse import urlparse, quote_plus
 import aiohttp
@@ -30,6 +31,23 @@ class DLHDExtractor:
         self._iframe_context = None
         self._session_lock = asyncio.Lock()
         self.proxies = proxies or []
+        self.cache_file = os.path.join(os.path.dirname(__file__), '.dlhd_cache')
+        self._stream_data_cache: Dict[str, Dict[str, Any]] = self._load_cache()
+
+    def _load_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Carica la cache da un file codificato in Base64 all'avvio."""
+        try:
+            if os.path.exists(self.cache_file):
+                with open(self.cache_file, 'r', encoding='utf-8') as f:
+                    logger.info(f"💾 Caricamento cache dal file: {self.cache_file}")
+                    encoded_data = f.read()
+                    if not encoded_data:
+                        return {}
+                    decoded_data = base64.b64decode(encoded_data).decode('utf-8')
+                    return json.loads(decoded_data)
+        except (IOError, json.JSONDecodeError) as e:
+            logger.error(f"❌ Errore durante il caricamento della cache: {e}. Inizio con una cache vuota.")
+        return {}
 
     def _get_random_proxy(self):
         """Restituisce un proxy casuale dalla lista."""
@@ -60,6 +78,17 @@ class DLHDExtractor:
                 cookie_jar=aiohttp.CookieJar()
             )
         return self.session
+
+    def _save_cache(self):
+        """Salva lo stato corrente della cache su un file, codificando il contenuto in Base64."""
+        try:
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json_data = json.dumps(self._stream_data_cache)
+                encoded_data = base64.b64encode(json_data.encode('utf-8')).decode('utf-8')
+                f.write(encoded_data)
+                logger.info(f"💾 Cache codificata e salvata con successo nel file: {self.cache_file}")
+        except IOError as e:
+            logger.error(f"❌ Errore durante il salvataggio della cache: {e}")
 
     def _get_headers_for_url(self, url: str, base_headers: dict) -> dict:
         """Applica headers specifici per newkso.ru automaticamente"""
@@ -155,9 +184,9 @@ class DLHDExtractor:
                 logger.error(f"❌ Errore non di rete tentativo {attempt + 1} per {url}: {str(e)}")
                 if attempt == retries - 1:
                     raise ExtractorError(f"Errore finale per {url}: {str(e)}")
-                await asyncio.sleep(initial_delay)
+                await asyncio.sleep(initial_delay) 
 
-    async def extract(self, url: str, **kwargs) -> Dict[str, Any]:
+    async def extract(self, url: str, force_refresh: bool = False, **kwargs) -> Dict[str, Any]:
         
         async def get_daddylive_base_url():
             if self._cached_base_url:
@@ -392,7 +421,7 @@ class DLHDExtractor:
                     raise ExtractorError(f"Parametri mancanti: {', '.join(missing_params)}")
 
                 # Procedi con l'autenticazione
-                auth_sig = quote_plus(auth_sig)
+                auth_sig_quoted = quote_plus(auth_sig)
                 
                 if auth_php:
                     normalized_auth_php = auth_php.strip().lstrip('/')
@@ -406,7 +435,7 @@ class DLHDExtractor:
                 else:
                     auth_url = f'{auth_host}{auth_php}'
                 
-                auth_url = f'{auth_url}?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}'
+                auth_url = f'{auth_url}?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig_quoted}'
                 
                 # Fase 4: Auth request con header del contesto iframe
                 iframe_origin = f"https://{urlparse(iframe_url).netloc}"
@@ -456,6 +485,15 @@ class DLHDExtractor:
                     "destination_url": clean_m3u8_url,
                     "request_headers": stream_headers,
                     "mediaflow_endpoint": self.mediaflow_endpoint,
+                    "auth_data": {
+                        "channel_key": channel_key,
+                        "auth_ts": auth_ts,
+                        "auth_rnd": auth_rnd,
+                        "auth_sig": auth_sig, # Salva la signature originale
+                        "auth_host": auth_host,
+                        "auth_php": auth_php,
+                        "iframe_url": iframe_url
+                    }
                 }
                 
             except Exception as param_error:
@@ -468,6 +506,35 @@ class DLHDExtractor:
             if not channel_id:
                 raise ExtractorError(f"Impossibile estrarre channel ID da {clean_url}")
 
+            # Controlla la cache prima di procedere
+            if not force_refresh and channel_id in self._stream_data_cache:
+                logger.info(f"✅ Trovati dati in cache per il canale ID: {channel_id}. Verifico la validità...")
+                cached_data = self._stream_data_cache[channel_id]
+                stream_url = cached_data.get("destination_url")
+                stream_headers = cached_data.get("request_headers", {})
+
+                is_valid = False
+                if stream_url:
+                    try:
+                        session = await self._get_session()
+                        # Uso una richiesta HEAD per efficienza, con un timeout breve
+                        async with session.head(stream_url, headers=stream_headers, timeout=10, ssl=False) as response:
+                            if response.status == 200:
+                                is_valid = True
+                                logger.info(f"✅ Cache per il canale ID {channel_id} è valida.")
+                            else:
+                                logger.warning(f"⚠️ Cache per il canale ID {channel_id} non valida. Status: {response.status}. Procedo con estrazione.")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Errore durante la validazione della cache per {channel_id}: {e}. Procedo con estrazione.")
+                
+                if is_valid:
+                    return cached_data
+                else:
+                    # Rimuovi i dati invalidi dalla cache
+                    del self._stream_data_cache[channel_id]
+                    self._save_cache()
+                    logger.info(f"🗑️ Cache invalidata per il canale ID {channel_id}.")
+            
             baseurl = await get_daddylive_base_url()
             
             # Prova tutti gli endpoint in sequenza
@@ -478,6 +545,10 @@ class DLHDExtractor:
                 try:
                     logger.info(f"🚀 Provo endpoint: {endpoint}")
                     result = await try_endpoint(baseurl, endpoint, channel_id)
+                    # Salva il risultato in cache in caso di successo
+                    self._stream_data_cache[channel_id] = result
+                    self._save_cache()
+                    logger.info(f"💾 Dati per il canale ID {channel_id} salvati in cache.")
                     logger.info(f"✅ Endpoint {endpoint} riuscito!")
                     return result
                 except Exception as exc:
