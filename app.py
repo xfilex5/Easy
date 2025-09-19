@@ -389,9 +389,11 @@ class HLSProxy:
                     if 'mpegurl' in content_type or stream_url.endswith('.m3u8'):
                         manifest_content = await resp.text()
                         
-                        scheme = request.scheme
-                        host = request.host
+                        # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
+                        scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+                        host = request.headers.get('X-Forwarded-Host', request.host)
                         proxy_base = f"{scheme}://{host}"
+                        logger.info(f"Costruzione URL proxy basata su: {proxy_base}")
                         
                         rewritten_manifest = self._rewrite_manifest_urls(
                             manifest_content, stream_url, proxy_base, headers
@@ -411,9 +413,11 @@ class HLSProxy:
                     elif 'dash+xml' in content_type or stream_url.endswith('.mpd'):
                         manifest_content = await resp.text()
                         
-                        scheme = request.scheme
-                        host = request.host
+                        # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
+                        scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+                        host = request.headers.get('X-Forwarded-Host', request.host)
                         proxy_base = f"{scheme}://{host}"
+                        logger.info(f"Costruzione URL proxy per MPD basata su: {proxy_base}")
                         
                         rewritten_manifest = self._rewrite_mpd_manifest(manifest_content, stream_url, proxy_base, headers)
                         
@@ -600,8 +604,9 @@ class HLSProxy:
             if not playlist_definitions:
                 return web.Response(text="Nessuna definizione playlist valida trovata", status=400)
             
-            scheme = request.scheme
-            host = request.host
+            # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
+            scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+            host = request.headers.get('X-Forwarded-Host', request.host)
             base_url = f"{scheme}://{host}"
             
             async def generate_response():
