@@ -523,15 +523,13 @@ class HLSProxy:
 
                     # Aggiungi gli header necessari come parametri h_
                     # Questo permette al gestore della chiave di usare il contesto corretto
-                    key_req_headers = {}
-                    for h_name in ['Referer', 'Origin', 'User-Agent']:
-                        if h_name in stream_headers:
-                            # Usa h_User_Agent per evitare conflitti con trattini
-                            param_name = f"h_{h_name.replace('-', '_')}"
-                            key_req_headers[param_name] = stream_headers[h_name]
-                    
-                    if key_req_headers:
-                        proxy_key_url += "&" + urllib.parse.urlencode(key_req_headers)
+                    # ✅ CORREZIONE: Passa tutti gli header rilevanti alla richiesta della chiave
+                    # per garantire l'autenticazione corretta.
+                    key_header_params = "".join(
+                        [f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" 
+                         for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']]
+                    )
+                    proxy_key_url += key_header_params
                     
                     # Sostituisci l'URI nel tag EXT-X-KEY
                     new_line = line[:uri_start] + proxy_key_url + line[uri_end:]
