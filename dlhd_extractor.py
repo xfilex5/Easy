@@ -354,6 +354,31 @@ class DLHDExtractor:
                 except Exception:
                     return None
             
+            def extract_xkzk_format(js):
+                """Estrae parametri dal formato XKZK."""
+                try:
+                    xkzk_pattern = r'(?:const|var|let)\s+XKZK\s*=\s*["\']([^"\']+)["\']'
+                    match = re.search(xkzk_pattern, js)
+                    if not match:
+                        return None
+                    
+                    b64_data = match.group(1)
+                    logger.info(f"Trovati dati XKZK: {b64_data[:50]}...")
+                    
+                    json_data = base64.b64decode(b64_data).decode('utf-8')
+                    obj_data = json.loads(json_data)
+                    
+                    decoded_params = {}
+                    for k, v in obj_data.items():
+                        try:
+                            decoded_params[k] = base64.b64decode(v).decode('utf-8')
+                        except Exception:
+                            decoded_params[k] = v
+                    return decoded_params
+                except Exception as e:
+                    logger.debug(f"Impossibile processare il formato XKZK: {e}")
+                    return None
+
             try:
                 # Estrai channel key
                 channel_key = None
@@ -374,33 +399,43 @@ class DLHDExtractor:
                 # Inizializza tutte le variabili a None
                 auth_host = auth_php = auth_ts = auth_rnd = auth_sig = None
                 
-                # Prova formato XJZ
-                xjz_data = extract_xjz_format(iframe_content)
-                if xjz_data:
-                    logger.info("Uso del nuovo formato XJZ per l'estrazione dei parametri")
-                    auth_host = xjz_data.get('b_host')
-                    auth_php = xjz_data.get('b_script')
-                    auth_ts = xjz_data.get('b_ts')
-                    auth_rnd = xjz_data.get('b_rnd')
-                    auth_sig = xjz_data.get('b_sig')
+                # Prova formato XKZK
+                xkzk_data = extract_xkzk_format(iframe_content)
+                if xkzk_data:
+                    logger.info("Uso del formato XKZK per l'estrazione dei parametri")
+                    auth_host = xkzk_data.get('b_host')
+                    auth_php = xkzk_data.get('b_script')
+                    auth_ts = xkzk_data.get('b_ts')
+                    auth_rnd = xkzk_data.get('b_rnd')
+                    auth_sig = xkzk_data.get('b_sig')
                 else:
-                    # Prova formato BUNDLE
-                    bundle_data = extract_bundle_format(iframe_content)
-                    if bundle_data:
-                        logger.info("Uso del formato BUNDLE per l'estrazione dei parametri")
-                        auth_host = bundle_data.get('b_host')
-                        auth_php = bundle_data.get('b_script')
-                        auth_ts = bundle_data.get('b_ts')
-                        auth_rnd = bundle_data.get('b_rnd')
-                        auth_sig = bundle_data.get('b_sig')
+                    # Prova formato XJZ
+                    xjz_data = extract_xjz_format(iframe_content)
+                    if xjz_data:
+                        logger.info("Uso del nuovo formato XJZ per l'estrazione dei parametri")
+                        auth_host = xjz_data.get('b_host')
+                        auth_php = xjz_data.get('b_script')
+                        auth_ts = xjz_data.get('b_ts')
+                        auth_rnd = xjz_data.get('b_rnd')
+                        auth_sig = xjz_data.get('b_sig')
                     else:
-                        # Fallback al formato vecchio
-                        logger.info("Fallback al formato vecchio per l'estrazione dei parametri")
-                        auth_ts = extract_var_old_format(iframe_content, 'c')
-                        auth_rnd = extract_var_old_format(iframe_content, 'd')
-                        auth_sig = extract_var_old_format(iframe_content, 'e')
-                        auth_host = extract_var_old_format(iframe_content, 'a')
-                        auth_php = extract_var_old_format(iframe_content, 'b')
+                        # Prova formato BUNDLE
+                        bundle_data = extract_bundle_format(iframe_content)
+                        if bundle_data:
+                            logger.info("Uso del formato BUNDLE per l'estrazione dei parametri")
+                            auth_host = bundle_data.get('b_host')
+                            auth_php = bundle_data.get('b_script')
+                            auth_ts = bundle_data.get('b_ts')
+                            auth_rnd = bundle_data.get('b_rnd')
+                            auth_sig = bundle_data.get('b_sig')
+                        else:
+                            # Fallback al formato vecchio
+                            logger.info("Fallback al formato vecchio per l'estrazione dei parametri")
+                            auth_ts = extract_var_old_format(iframe_content, 'c')
+                            auth_rnd = extract_var_old_format(iframe_content, 'd')
+                            auth_sig = extract_var_old_format(iframe_content, 'e')
+                            auth_host = extract_var_old_format(iframe_content, 'a')
+                            auth_php = extract_var_old_format(iframe_content, 'b')
 
                 # Verifica che tutti i parametri siano presenti
                 missing_params = []
