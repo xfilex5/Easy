@@ -395,7 +395,7 @@ class HLSProxy:
                         proxy_base = f"{scheme}://{host}"
                         logger.info(f"Costruzione URL proxy basata su: {proxy_base}")
                         
-                        rewritten_manifest = self._rewrite_manifest_urls(
+                        rewritten_manifest = await self._rewrite_manifest_urls(
                             manifest_content, stream_url, proxy_base, headers
                         )
                         
@@ -494,12 +494,53 @@ class HLSProxy:
             logger.error(f"❌ Errore durante la riscrittura del manifest MPD: {e}")
             return manifest_content # Restituisce il contenuto originale in caso di errore
 
-    def _rewrite_manifest_urls(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict) -> str:
+    async def _rewrite_manifest_urls(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict) -> str:
         """✅ AGGIORNATA: Riscrive gli URL nei manifest HLS per passare attraverso il proxy (incluse chiavi AES)"""
         lines = manifest_content.split('\n')
         rewritten_lines = []
         
-        # Prepara gli header da passare come parametri URL
+        # ✅ NUOVO: Logica speciale per VixSrc
+        # Determina se l'URL base è di VixSrc per applicare la logica personalizzata.
+        is_vixsrc_stream = False
+        try:
+            # Usiamo l'URL originale della richiesta per determinare l'estrattore
+            # Questo è più affidabile di `base_url` che potrebbe essere già un URL di playlist.
+            original_request_url = stream_headers.get('referer', base_url)
+            extractor = await self.get_extractor(original_request_url, {})
+            if hasattr(extractor, 'is_vixsrc') and extractor.is_vixsrc:
+                is_vixsrc_stream = True
+                logger.info("Rilevato stream VixSrc. Applicherò la logica di filtraggio qualità e non-proxy.")
+        except Exception:
+            # Se l'estrattore non viene trovato, procedi normalmente.
+            pass
+
+        if is_vixsrc_stream:
+            streams = []
+            for i, line in enumerate(lines):
+                if line.startswith('#EXT-X-STREAM-INF:'):
+                    bandwidth_match = re.search(r'BANDWIDTH=(\d+)', line)
+                    if bandwidth_match:
+                        bandwidth = int(bandwidth_match.group(1))
+                        streams.append({'bandwidth': bandwidth, 'inf': line, 'url': lines[i+1]})
+            
+            if streams:
+                # Filtra per la qualità più alta
+                highest_quality_stream = max(streams, key=lambda x: x['bandwidth'])
+                logger.info(f"VixSrc: Trovata qualità massima con bandwidth {highest_quality_stream['bandwidth']}.")
+                
+                # Ricostruisci il manifest solo con la qualità più alta e gli URL originali
+                rewritten_lines.append('#EXTM3U')
+                for line in lines:
+                    if line.startswith('#EXT-X-MEDIA:') or line.startswith('#EXT-X-STREAM-INF:') or (line and not line.startswith('#')):
+                        continue # Salta i vecchi tag di stream e media
+                
+                # Aggiungi i tag media e lo stream di qualità più alta
+                rewritten_lines.extend([line for line in lines if line.startswith('#EXT-X-MEDIA:')])
+                rewritten_lines.append(highest_quality_stream['inf'])
+                rewritten_lines.append(highest_quality_stream['url'])
+                return '\n'.join(rewritten_lines)
+
+        # Logica standard per tutti gli altri stream
         header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
 
         for line in lines:
