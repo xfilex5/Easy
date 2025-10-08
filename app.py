@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # --- Moduli Esterni ---
 # Vengono importati singolarmente per un feedback più granulare in caso di errore.
-VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder = None, None, None, None
+VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder, SportsonlineExtractor = None, None, None, None, None
 
 try:
     from vavoo_extractor import VavooExtractor
@@ -63,6 +63,12 @@ try:
     logger.info("✅ Modulo VixSrcExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo VixSrcExtractor non trovato. Funzionalità VixSrc disabilitata.")
+
+try:
+    from sportsonline_extractor import SportsonlineExtractor
+    logger.info("✅ Modulo SportsonlineExtractor caricato.")
+except ImportError:
+    logger.warning("⚠️ Modulo SportsonlineExtractor non trovato. Funzionalità Sportsonline disabilitata.")
 
 # --- Classi Unite ---
 class ExtractorError(Exception):
@@ -164,6 +170,12 @@ class HLSProxy:
                 key = "vixsrc"
                 if key not in self.extractors:
                     self.extractors[key] = VixSrcExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
+            elif any(domain in url for domain in ["sportzonline", "sportsonline"]):
+                key = "sportsonline"
+                proxies = GLOBAL_PROXIES
+                if key not in self.extractors:
+                    self.extractors[key] = SportsonlineExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
             else:
                 raise ExtractorError("Tipo di URL non supportato")
@@ -738,6 +750,7 @@ class HLSProxy:
                 "vavoo_extractor": VavooExtractor is not None,
                 "dlhd_extractor": DLHDExtractor is not None,
                 "vixsrc_extractor": VixSrcExtractor is not None,
+                "sportsonline_extractor": SportsonlineExtractor is not None,
             },
             "proxy_config": {
                 "global": f"{len(GLOBAL_PROXIES)} proxies caricati",
