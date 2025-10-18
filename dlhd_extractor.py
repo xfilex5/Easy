@@ -35,6 +35,7 @@ class DLHDExtractor:
         self._iframe_context = None
         self._session_lock = asyncio.Lock()
         self.proxies = proxies or []
+        self._extraction_locks: Dict[str, asyncio.Lock] = {} # ✅ NUOVO: Lock per evitare estrazioni multiple
         self.cache_file = os.path.join(os.path.dirname(__file__), '.dlhd_cache')
         self._stream_data_cache: Dict[str, Dict[str, Any]] = self._load_cache()
 
@@ -63,7 +64,7 @@ class DLHDExtractor:
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
             proxy = self._get_random_proxy()
             if proxy:
-                logger.info(f"Utilizzo del proxy {proxy} per la sessione DLHD.")
+                logger.info(f"🔗 Utilizzo del proxy {proxy} per la sessione DLHD.")
                 connector = ProxyConnector.from_url(proxy, ssl=False)
             else:
                 connector = TCPConnector(
@@ -74,6 +75,7 @@ class DLHDExtractor:
                     force_close=False,
                     use_dns_cache=True
                 )
+                logger.info("ℹ️ Nessun proxy specifico per DLHD, uso connessione diretta.")
             # ✅ FONDAMENTALE: Cookie jar per mantenere sessione come browser reale
             self.session = ClientSession(
                 timeout=timeout,
@@ -226,7 +228,7 @@ class DLHDExtractor:
                     logger.error(f"❌ Errore non di rete tentativo {attempt + 1} per {url}: {str(e)}")
                 if attempt == retries - 1:
                     raise ExtractorError(f"Errore finale per {url}: {str(e)}")
-                await asyncio.sleep(initial_delay) 
+        await asyncio.sleep(initial_delay)
 
     async def extract(self, url: str, force_refresh: bool = False, **kwargs) -> Dict[str, Any]:
         """Flusso di estrazione principale: risolve il dominio base, trova i player, estrae l'iframe, i parametri di autenticazione e l'URL m3u8 finale."""
@@ -238,7 +240,7 @@ class DLHDExtractor:
             DOMAINS = ['https://daddylive.sx/', 'https://dlhd.dad/']
             for base in DOMAINS:
                 try:
-                    resp = await self._make_robust_request(base, retries=2)
+                    resp = await self._make_robust_request(base, retries=1)
                     final_url = str(resp.url)
                     if not final_url.endswith('/'): final_url += '/' # Assicura lo slash finale
                     self._cached_base_url = final_url
@@ -424,7 +426,7 @@ class DLHDExtractor:
                 auth_headers['Referer'] = iframe_url
                 auth_headers['Origin'] = iframe_origin
                 try:
-                    await self._make_robust_request(auth_url, headers=auth_headers)
+                    await self._make_robust_request(auth_url, headers=auth_headers, retries=1)
                 except Exception as auth_error:
                     logger.warning(f"Richiesta di autenticazione fallita: {auth_error}.")
                     if channel_id in self._stream_data_cache:
@@ -467,13 +469,15 @@ class DLHDExtractor:
                 
                 # Costruisci URL finale del stream
                 if server_key == 'top1/cdn':
-                    clean_m3u8_url = f'https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8'
+                    clean_m3u8_url = f'https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8' # Dominio noto e funzionante
                 elif '/' in server_key:
                     parts = server_key.split('/')
                     domain = parts[0]
                     clean_m3u8_url = f'https://{domain}.newkso.ru/{server_key}/{channel_key}/mono.m3u8'
                 else:
-                    clean_m3u8_url = f'https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8'
+                    # ✅ CORREZIONE: Usa un dominio di fallback più affidabile se la costruzione dinamica fallisce.
+                    # 'top1' è più recente e stabile di 'top2'.
+                    clean_m3u8_url = f'https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8'.replace('top2new', 'top1new')
                 
                 # Configura headers finali
                 if "newkso.ru" in clean_m3u8_url:
@@ -522,31 +526,83 @@ class DLHDExtractor:
                 is_valid = False
                 if stream_url:
                     try:
-                        session = await self._get_session()
-                        # Uso una richiesta HEAD per efficienza, con un timeout breve
-                        async with session.head(stream_url, headers=stream_headers, timeout=10, ssl=False) as response:
-                            if response.status == 200:
-                                is_valid = True
-                                logger.info(f"✅ Cache per il canale ID {channel_id} è valida.")
-                            else:
-                                logger.warning(f"⚠️ Cache per il canale ID {channel_id} non valida. Status: {response.status}. Procedo con estrazione.")
+                        # Usa una sessione separata per la validazione per non interferire
+                        # con la sessione principale e i suoi cookie.
+                        async with aiohttp.ClientSession(timeout=ClientTimeout(total=10)) as validation_session:
+                            async with validation_session.head(stream_url, headers=stream_headers, ssl=False) as response:
+                                # Uso una richiesta HEAD per efficienza, con un timeout breve
+                                if response.status == 200:
+                                    is_valid = True
+                                    logger.info(f"✅ Cache per il canale ID {channel_id} è valida.")
+                                else:
+                                    logger.warning(f"⚠️ Cache per il canale ID {channel_id} non valida. Status: {response.status}. Procedo con estrazione.")
                     except Exception as e:
                         logger.warning(f"⚠️ Errore durante la validazione della cache per {channel_id}: {e}. Procedo con estrazione.")
                 
-                if is_valid:
-                    return cached_data
-                else:
+                if not is_valid:
                     # Rimuovi i dati invalidi dalla cache
-                    del self._stream_data_cache[channel_id]
+                    if channel_id in self._stream_data_cache:
+                        del self._stream_data_cache[channel_id]
                     self._save_cache()
                     logger.info(f"🗑️ Cache invalidata per il canale ID {channel_id}.")
+                else:
+                    # ✅ NUOVO: Esegui una richiesta di "keep-alive" per mantenere la sessione attiva
+                    # Questo utilizza il proxy se configurato, come richiesto.
+                    try:
+                        logger.info(f"🔄 Eseguo una richiesta di keep-alive per il canale {channel_id} per mantenere la sessione attiva tramite proxy.")
+                        baseurl = await resolve_base_url()
+                        # Eseguiamo una richiesta leggera alla pagina del canale per aggiornare i cookie di sessione.
+                        # Questo assicura che il proxy venga utilizzato.
+                        await self._make_robust_request(url, retries=1)
+                        logger.info(f"✅ Sessione per il canale {channel_id} rinfrescata con successo.")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Fallita la richiesta di keep-alive per il canale {channel_id}: {e}. Lo stream potrebbe non funzionare.")
+                    
+                    return cached_data
 
-            # Procedi con l'estrazione
-            baseurl = await resolve_base_url()
-            return await get_stream_data(baseurl, url, channel_id)
+            # ✅ NUOVO: Usa un lock per prevenire estrazioni simultanee per lo stesso canale
+            if channel_id not in self._extraction_locks:
+                self._extraction_locks[channel_id] = asyncio.Lock()
+            
+            lock = self._extraction_locks[channel_id]
+            async with lock:
+                # Ricontrolla la cache dopo aver acquisito il lock, un altro processo potrebbe averla già popolata
+                if channel_id in self._stream_data_cache:
+                    logger.info(f"✅ Dati per il canale {channel_id} trovati in cache dopo aver atteso il lock.")
+                    return self._stream_data_cache[channel_id]
+
+                # Procedi con l'estrazione
+                logger.info(f"⚙️ Nessuna cache valida per {channel_id}, avvio estrazione completa...")
+                baseurl = await resolve_base_url()
+                return await get_stream_data(baseurl, url, channel_id)
             
         except Exception as e:
+            logger.exception(f"Estrazione DLHD completamente fallita per URL {url}")
             raise ExtractorError(f"Estrazione DLHD completamente fallita: {str(e)}")
+
+    async def invalidate_cache_for_url(self, url: str):
+        """
+        Invalida la cache per un URL specifico.
+        Questa funzione viene chiamata da app.py quando rileva un errore (es. fallimento chiave AES).
+        """
+        def extract_channel_id_internal(u: str) -> Optional[str]:
+            patterns = [
+                r'/premium(\d+)/mono\.m3u8$',
+                r'/(?:watch|stream|cast|player)/stream-(\d+)\.php',
+                r'watch\.php\?id=(\d+)',
+                r'(?:%2F|/)stream-(\d+)\.php',
+                r'stream-(\d+)\.php'
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, u, re.IGNORECASE)
+                if match: return match.group(1)
+            return None
+
+        channel_id = extract_channel_id_internal(url)
+        if channel_id and channel_id in self._stream_data_cache:
+            del self._stream_data_cache[channel_id]
+            self._save_cache()
+            logger.info(f"🗑️ Cache per il canale ID {channel_id} invalidata a causa di un errore esterno (es. chiave AES).")
 
     async def close(self):
         """Chiude definitivamente la sessione"""
